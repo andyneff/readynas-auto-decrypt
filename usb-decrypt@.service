@@ -1,5 +1,4 @@
 [Service]
-Type=forking
-GuessMainPID=false
+Type=exec
 RuntimeMaxSec=600
 ExecStart=/bin/sh -c "exec /data/data/nas_stuff/decrypt_usb %I"
