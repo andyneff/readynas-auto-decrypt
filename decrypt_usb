@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 
 set -eu
-set -xv
-
-exec 1> >(tee -i /tmp/out)
-exec 2> >(tee -i /tmp/err)
 
 # Load common functions
 source "$(dirname "${BASH_SOURCE[0]}")/common.bsh"
@@ -63,7 +59,7 @@ for key in /media/*/data.key; do
   # If the key files exists and check to see if it unlocks the drive
   if [ -e "${key}" ] && cryptsetup luksOpen --test-passphrase --key-file "${key}" "${devname}"; then
 
-    # cryptseupt close doesn't work very often, so we test the
+    # cryptsetup close doesn't work very often, so we test the
     # the key, and then look for an available name
     dev_mapper_name="${name}"
 
@@ -111,13 +107,15 @@ for key in /media/*/data.key; do
            'group_access', 'everyone_access', 'non_owner_delete', 'user_id', 'group_id') VALUES
           ('${mount_location//\'/\'\'}', 'share', 'media', '${name//\'/\'\'}', '/${mount_location//\'/\'\'}', '${description//\'/\'\'}', 7, 7, 7, 0, 0, 0);"
 
-    # share_id="$(sqlite3 /var/readynasd/db.sq3 "SELECT id FROM share WHERE zfs_name='${mount_location//\'/\'\'}';")"
+    share_id="$(sqlite3 /var/readynasd/db.sq3 "
+                  SELECT id FROM share WHERE
+                  zfs_name='${mount_location//\'/\'\'}';")"
 
-    # sqlite3 /var/readynasd/db.sq3 "
-    #     INSERT INTO 'zfs_attr'
-    #       ('share_id', 'mb_quota', 'mb_reservation', 'mb_refquota', 'mb_refreservation',
-    #        'compression', 'dedup', 'bit_rot_protection', 'auto_defrag') VALUES
-    #       (${share_id}, 0, 0, 0, 0, 0, 0, 0, 0);"
+    sqlite3 /var/readynasd/db.sq3 "
+        INSERT INTO 'zfs_attr'
+          ('share_id', 'mb_quota', 'mb_reservation', 'mb_refquota', 'mb_refreservation',
+           'compression', 'dedup', 'bit_rot_protection', 'auto_defrag') VALUES
+          (${share_id}, 0, 0, 0, 0, 0, 0, 0, 0);"
 
     # Stop searching
     break
@@ -125,14 +123,6 @@ for key in /media/*/data.key; do
 done
 
 # /usr/bin/rnutil rn_lcd -s "Hi" -p 1 -e 10 -k 478
-# IFS=$'\n'
-# echo $'ok\n'"${*}" > /tmp/foo
 
 # Debugging
-# touch /tmp/keep_testing
-# while [ -e /tmp/keep_testing ]; do
-#   sqlite3 -init /data/data/nas_stuff/init.sql -readonly /var/readynasd/db.sq3 'SELECT * FROM "usb_storage"; SELECT * FROM "share"; SELECT * FROM "zfs_attr";'
-#   date
-#   sleep 1
-# done
-# echo "Done testing"
+# sqlite3 -init /data/data/nas_stuff/init.sql -readonly /var/readynasd/db.sq3 'SELECT * FROM "usb_storage"; SELECT * FROM "share"; SELECT * FROM "zfs_attr";'

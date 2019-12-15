@@ -1,22 +1,14 @@
 KERNEL=="sd*", \
  ENV{ID_FS_TYPE}=="crypto_LUKS", \
+ ENV{ID_BUS}=="usb", \
  ACTION=="add", \
  ENV{SYSTEMD_WANTS}="usb-decrypt@%E{DEVNAME}.service"
 
-# This doesn't work, both %i and %I can't be used, one converts / -> -, the other
-# - -> /, both wrong, because I have BOTH!
-# ENV{SYSTEMD_WANTS}="usb-decrypt@%E{DEVPATH}.service"
+# DEVPATH doesn't work, both %i and %I can't be used, one converts / -> -,
+# the other - -> /, both wrong, because I have BOTH!
 
-# ID_MODEL_ENC ID_PART_ENTRY_NAME are encoded, however the service will decode them, and this could cause arbitrarily execute code, which would be mmmmm bad. And since I don't feel like trusting other things like serial, I'm going to have to call udevadm info anyways, might as well trust nothing (like serial, etc...)
-# " 22
-# ' 27
-
-# KERNEL=="sd*", \
-#  ENV{ID_FS_TYPE}=="crypto_LUKS", \
-#  ACTION=="add", \
-#  RUN+="/data/data/nas_stuff/delay_run 10 /data/data/nas_stuff/decrypt_backup '%E{DEVNAME}' '%E{DEVPATH}' '%E{ID_PART_ENTRY_NAME}' '%E{ID_SERIAL_SHORT}' '%E{ID_FS_UUID}' '%E{ID_MODEL_ENC}' '%E{ID_SIZE}' '%E{ID_LINK_SPEED}' '%E{ID_LOCATION}' '%E{ID_FS_LABEL_ENC}'"
-#
-# KERNEL=="sd*", \
-#  ENV{ID_FS_TYPE}=="crypto_LUKS", \
-#  ACTION=="remove", \
-#  RUN+="/data/data/nas_stuff/delay_run 0 /data/data/nas_stuff/unplug_backup '%E{DEVPATH}' '%E{ID_SERIAL_SHORT}' '%E{ID_FS_UUID}'"
+# ID_MODEL_ENC ID_PART_ENTRY_NAME are encoded, however the service will decode
+# them, and this could cause arbitrarily execute code, which would be mmmmm bad.
+# And since I don't feel like trusting other things like serial, I'm going to
+# have to call udevadm info anyways, might as well trust nothing (like serial,
+# etc...)

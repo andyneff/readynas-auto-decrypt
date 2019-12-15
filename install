@@ -8,17 +8,8 @@ udevadm control --reload
 
 # Install scripts
 mkdir -p /opt/usb-auto-decrypt
-cp "${CWD}/decrypt_usb" "${CWD}/install" /opt/usb-auto-decrypt/
-chmod 755 /opt/usb-auto-decrypt /opt/usb-auto-decrypt/decrypt_usb /opt/usb-auto-decrypt/install
-
-# # Install udevd override settings
-# filename="/etc/systemd/system/systemd-udevd.service.d/decryptbackup.conf"
-
-# mkdir -p "$(dirname "${filename}")"
-# echo '[Service]
-# MountFlags=shared' > "${filename}"
-# systemctl daemon-reload
-# service systemd-udevd --full-restart
+cp "${CWD}/decrypt_usb" /opt/usb-auto-decrypt/
+chmod 755 /opt/usb-auto-decrypt /opt/usb-auto-decrypt/decrypt_usb
 
 # install services
 cp "${CWD}"/*.service /etc/systemd/system/
