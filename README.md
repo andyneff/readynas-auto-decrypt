@@ -1,6 +1,8 @@
 
 Add auto decrypt external USB drives on insert, for ReadyNAS
 
+**Note** No matter what I tried, the usb device never showed up on the "System" page under "Devices", it does however show up under "Shares" and in "Backup", and can be unmounted from the "Shares" tab.
+
 # Installation
 
 1. Clone this repo in a drive on the nas (or copy it over your own way)
