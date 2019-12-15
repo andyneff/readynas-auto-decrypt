@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+filename="/etc/systemd/system/systemd-udevd.service.d/decryptbackup.conf"
+
+mkdir -p "$(dirname "${filename}")"
+
+echo '[Service]
+MountFlags=shared' > "${filename}"
+
+systemctl daemon-reload
+service systemd-udevd --full-restart

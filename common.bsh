@@ -1,0 +1,67 @@
+#!/usr/bin/env false bash
+
+# Is $1 in $2...
+function isin()
+{
+  local key="${1}"
+  shift 1
+  while (( $# )); do
+    if [ "${1}" = "${key}" ]; then
+      return 0
+    fi
+    shift 1
+  done
+  return 1
+}
+
+function mount_type()
+{
+  mount | sed -En 's:^.* on '"$1"' (type |\()([^, ]*).*:\2:p'
+}
+
+function get_name()
+{
+  local disks
+  local removable
+  local count
+  local name
+
+  local uid="${1}"
+  local sys_path="${2}"
+
+  # Try and find an entry in the usb_map
+  name="$(sed -n "s|:${uid}$||p" /etc/frontview/usb/usb_map)"
+
+  # If name is not in usb_map, then this device has never been mounted before.
+  if [ "${name}" = "" ]; then
+    # First we need to determine if it is removable (FLASH) or not (HDD). It's
+    # just how they name the device, they are both removable, obviously.
+    if [ -e "${sys_path}/removable" ]; then
+      removable="$(< "${sys_path}/removable")"
+    # Check one dir up. Becuase for sdh1, sdh is .., where the removable flag really is
+    elif [ -e "${sys_path}/../removable" ]; then
+      removable="$(< "${sys_path}/../removable")"
+    else
+      removable=0
+    fi
+
+    # If removable flag wasn't set, then HDD
+    if [ "${removable}" = "0" ]; then
+      removable=HDD
+    else
+      # else FLASH
+      removable=FLASH
+    fi
+
+    # Parse the list of known names, so we can find a new one
+    disks=($(awk -F: '{print $1}' usb_map))
+    declare -i count=1
+    # search until we find an unused name
+    while isin "USB_${removable}_${count}"; do
+      count+=1
+    done
+    name="USB_${removable}_${count}"
+  fi
+
+  echo "${name}"
+}

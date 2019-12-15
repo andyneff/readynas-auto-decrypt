@@ -1,0 +1,9 @@
+KERNEL=="sd*", \
+ ENV{ID_FS_TYPE}=="crypto_LUKS", \
+ ACTION=="add", \
+ RUN+="/data/data/nas_stuff/delay_run 10 /data/data/nas_stuff/decrypt_backup '%E{DEVNAME}' '%E{DEVPATH}' '%E{ID_PART_ENTRY_NAME}' '%E{ID_SERIAL_SHORT}' '%E{ID_FS_UUID}' '%E{ID_MODEL_ENC}' '%E{ID_SIZE}' '%E{ID_LINK_SPEED}' '%E{ID_LOCATION}' '%E{ID_FS_LABEL_ENC}'"
+
+KERNEL=="sd*", \
+ ENV{ID_FS_TYPE}=="crypto_LUKS", \
+ ACTION=="remove", \
+ RUN+="/data/data/nas_stuff/delay_run 0 /data/data/nas_stuff/unplug_backup '%E{DEVPATH}' '%E{ID_SERIAL_SHORT}' '%E{ID_FS_UUID}'"
