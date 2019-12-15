@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+
+set -eu
+set -xv
+
+exec 1> >(tee -i /tmp/out)
+exec 2> >(tee -i /tmp/err)
+
+# Load common functions
+source "$(dirname "${BASH_SOURCE[0]}")/common.bsh"
+
+# 1. Set variables up
+
+# Safe eval of only the specific fields used
+pat="(.*)='(.*)'" # regex pattern
+while IFS='' read -r line || [[ -n "${line}" ]]; do
+  # Regex match
+  [[ ${line} =~ ${pat} ]]
+  # Use printg to decode string, and sed to strip spaces at the end
+  # I noticed that ReadyNas does this stripping, so can I!
+  declare "${BASH_REMATCH[1]}=$(printf ${BASH_REMATCH[2]} | sed 's| *$||')"
+done < <(udevadm info "${1}" -q property -x -P UDEV_ | grep -E 'UDEV_DEVNAME=|UDEV_ID_PART_ENTRY_NAME=|UDEV_ID_SERIAL_SHORT=|UDEV_ID_FS_UUID=|UDEV_ID_MODEL_ENC=|UDEV_ID_SIZE=|UDEV_ID_LINK_SPEED=|UDEV_ID_LOCATION=')
+# Tested with UDEV_ID_PART_ENTRY_NAME="f o'o B\"ar", so this should be safe
+
+declare -p | grep UDEV_
+
+sys_path="/sys${1}"
+devname="${UDEV_DEVNAME}"
+entry_name="${UDEV_ID_PART_ENTRY_NAME}"
+serial="${UDEV_ID_SERIAL_SHORT}"
+uuid="${UDEV_ID_FS_UUID}" # this is the encrypted fs uuid, but that's what ReadyNAS uses
+description="${UDEV_ID_MODEL_ENC}"
+size="${UDEV_ID_SIZE}"
+link_speed="${UDEV_ID_LINK_SPEED}"
+location="${UDEV_ID_LOCATION}"
+
+uid="${serial}-${uuid}"
+name="$(get_name "${uid}" "${sys_path}")"
+
+# 2. Wait for OS to put it's useless entry in
+
+for (( x=150; x>0; x-- )); do
+  found=$(sqlite3 -init /data/data/nas_stuff/init.sql -readonly /var/readynasd/db.sq3 "
+          SELECT EXISTS (SELECT 1 FROM 'usb_storage'
+                         WHERE uid='${uid//\'/\'\'}' LIMIT 1);")
+  if [ "${found}" = "1" ]; then
+    break
+  fi
+  sleep 2
+done
+
+if [ "${found}" = "0" ]; then
+  echo "Readynasd didn't create a record for me to use, giving up..." >&2
+  exit 1
+fi
+
+# 3. Auto decrypt and mount
+
+mount_location="media/${name}"
+
+# Search for keys
+for key in /media/*/data.key; do
+  # If the key files exists and check to see if it unlocks the drive
+  if [ -e "${key}" ] && cryptsetup luksOpen --test-passphrase --key-file "${key}" "${devname}"; then
+
+    # cryptseupt close doesn't work very often, so we test the
+    # the key, and then look for an available name
+    dev_mapper_name="${name}"
+
+    # This was originally added to solve the problem of /dev/mapper
+    # mount points not being cleaned up properly. However this was
+    # due to the mounts happening in an inaccessible namespace.
+    # Since this was discovered, this auto indexing code is no longer
+    # "needed", however I'm leaving it in for robustness sake.
+    declare -i count=0
+    while [ -e "/dev/mapper/${dev_mapper_name}" ]; do
+      dev_mapper_name="${name}_${count}"
+      count+=1
+    done
+
+    # Activate luks mount
+    cryptsetup luksOpen --key-file "${key}" "${devname}" "${dev_mapper_name}"
+
+    # Mount it
+    mkdir -p "/${mount_location}"
+    mount /dev/mapper/"${dev_mapper_name}" /"${mount_location}"
+
+# 4. Update database
+
+    fs_type="$(mount_type /"${mount_location}" | head -n 1)"
+
+    # Add to the database
+    sqlite3 -init /data/data/nas_stuff/init.sql /var/readynasd/db.sq3 "
+      UPDATE 'usb_storage'
+      SET uid = '${uid//\'/\'\'}',
+          description = '${description//\'/\'\'}',
+          device_size = ${size},
+          is_connected = 1,
+          last_connected_node = '$(basename "${devname}")',
+          speed = ${link_speed},
+          usbpath = '${location//\'/\'\'}',
+          mount_point = '${mount_location//\'/\'\'}',
+          fstype = '${fs_type//\'/\'\'}',
+          label = '${entry_name//\'/\'\'}',
+          serial = '${serial//\'/\'\'}'
+      WHERE name = '${name//\'/\'\'}';"
+
+    sqlite3 -init /data/data/nas_stuff/init.sql /var/readynasd/db.sq3 "
+        INSERT INTO 'share'
+          ('zfs_name', 'type', 'volume_id', 'name', 'path', 'comment', 'user_access',
+           'group_access', 'everyone_access', 'non_owner_delete', 'user_id', 'group_id') VALUES
+          ('${mount_location//\'/\'\'}', 'share', 'media', '${name//\'/\'\'}', '/${mount_location//\'/\'\'}', '${description//\'/\'\'}', 7, 7, 7, 0, 0, 0);"
+
+    # share_id="$(sqlite3 /var/readynasd/db.sq3 "SELECT id FROM share WHERE zfs_name='${mount_location//\'/\'\'}';")"
+
+    # sqlite3 /var/readynasd/db.sq3 "
+    #     INSERT INTO 'zfs_attr'
+    #       ('share_id', 'mb_quota', 'mb_reservation', 'mb_refquota', 'mb_refreservation',
+    #        'compression', 'dedup', 'bit_rot_protection', 'auto_defrag') VALUES
+    #       (${share_id}, 0, 0, 0, 0, 0, 0, 0, 0);"
+
+    # Stop searching
+    break
+  fi
+done
+
+# /usr/bin/rnutil rn_lcd -s "Hi" -p 1 -e 10 -k 478
+# IFS=$'\n'
+# echo $'ok\n'"${*}" > /tmp/foo
+
+# Debugging
+# touch /tmp/keep_testing
+# while [ -e /tmp/keep_testing ]; do
+#   sqlite3 -init /data/data/nas_stuff/init.sql -readonly /var/readynasd/db.sq3 'SELECT * FROM "usb_storage"; SELECT * FROM "share"; SELECT * FROM "zfs_attr";'
+#   date
+#   sleep 1
+# done
+# echo "Done testing"

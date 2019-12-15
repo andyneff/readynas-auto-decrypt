@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+
+set -xv
+
+umount /media/USB_HDD_2
+
+for point in /dev/mapper/USB_HDD_2 /dev/mapper/USB_HDD_2_*; do
+  if [ -e "${point}" ]; then
+    cryptsetup luksClose "${point}"
+  fi
+done
+
+sqlite3 -init /data/data/nas_stuff/init.sql /var/readynasd/db.sq3 "
+  DELETE FROM 'share' WHERE name='USB_HDD_2';"
+
+sqlite3 -init /data/data/nas_stuff/init.sql /var/readynasd/db.sq3 "
+  DELETE FROM 'usb_storage' WHERE name='USB_HDD_2';"
+
+ls /dev/mapper
+ls /media/USB_HDD_2
+
+sqlite3 -init /data/data/nas_stuff/init.sql -readonly /var/readynasd/db.sq3 "
+  SELECT * FROM 'usb_storage' WHERE name='USB_HDD_2';
+  SELECT * FROM 'share' WHERE name='USB_HDD_2'"

@@ -1,11 +1,25 @@
 #!/usr/bin/env bash
 
-filename="/etc/systemd/system/systemd-udevd.service.d/decryptbackup.conf"
+CWD="$(dirname "${BASH_SOURCE[0]}")"
 
-mkdir -p "$(dirname "${filename}")"
+# Install udev rule
+cp "${CWD}"/*.rules /etc/udev/rules.d/
+udevadm control --reload
 
-echo '[Service]
-MountFlags=shared' > "${filename}"
+# Install scripts
+mkdir -p /opt/usb-auto-decrypt
+cp "${CWD}/decrypt_usb" "${CWD}/install" /opt/usb-auto-decrypt/
+chmod 755 /opt/usb-auto-decrypt /opt/usb-auto-decrypt/decrypt_usb /opt/usb-auto-decrypt/install
 
+# # Install udevd override settings
+# filename="/etc/systemd/system/systemd-udevd.service.d/decryptbackup.conf"
+
+# mkdir -p "$(dirname "${filename}")"
+# echo '[Service]
+# MountFlags=shared' > "${filename}"
+# systemctl daemon-reload
+# service systemd-udevd --full-restart
+
+# install services
+cp "${CWD}"/*.service /etc/systemd/system/
 systemctl daemon-reload
-service systemd-udevd --full-restart

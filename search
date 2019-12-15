@@ -1,0 +1,1 @@
+find / -path /data -prune -o -path /dev -prune -o -path /sys -prune -o -path /run/nfs4 -prune -o -path /proc -prune -o -path /var/lib/docker -prune -o -print
