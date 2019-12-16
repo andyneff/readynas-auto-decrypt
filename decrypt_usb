@@ -81,7 +81,7 @@ if [ -n "${good_key+set}" ]; then
   fs_type="$(mount_type /"${mount_location}" | head -n 1)"
 
   # Add to the database
-  sqlite3 -init /data/data/nas_stuff/init.sql /var/readynasd/db.sq3 "
+  sqlite3 -init /opt/usb-auto-decrypt/init.sql /var/readynasd/db.sq3 "
     INSERT OR IGNORE INTO 'usb_storage'
           ('name', 'device_size', 'is_connected') VALUES
           ('${name}', 0, 0);
@@ -99,7 +99,7 @@ if [ -n "${good_key+set}" ]; then
         serial = '${serial//\'/\'\'}'
     WHERE name = '${name//\'/\'\'}';"
 
-  sqlite3 -init /data/data/nas_stuff/init.sql /var/readynasd/db.sq3 "
+  sqlite3 -init /opt/usb-auto-decrypt/init.sql /var/readynasd/db.sq3 "
       INSERT INTO 'share'
         ('zfs_name', 'type', 'volume_id', 'name', 'path', 'comment', 'user_access',
           'group_access', 'everyone_access', 'non_owner_delete', 'user_id', 'group_id') VALUES
@@ -109,7 +109,7 @@ if [ -n "${good_key+set}" ]; then
                 SELECT id FROM share
                 WHERE zfs_name='${mount_location//\'/\'\'}';")"
 
-  sqlite3 -init /data/data/nas_stuff/init.sql /var/readynasd/db.sq3 "
+  sqlite3 -init /opt/usb-auto-decrypt/init.sql /var/readynasd/db.sq3 "
       INSERT OR IGNORE INTO 'zfs_attr'
         ('share_id', 'auto_defrag') VALUES
         (${share_id}, 0);
@@ -125,7 +125,7 @@ if [ -n "${good_key+set}" ]; then
 fi
 
 # Debugging
-# sqlite3 -init /data/data/nas_stuff/init.sql -readonly /var/readynasd/db.sq3 '
+# sqlite3 -init /opt/usb-auto-decrypt/init.sql -readonly /var/readynasd/db.sq3 '
 #     SELECT * FROM "usb_storage";
 #     SELECT * FROM "share";
 #     SELECT * FROM "zfs_attr";'

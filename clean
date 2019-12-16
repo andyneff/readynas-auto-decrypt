@@ -20,20 +20,20 @@ for point in "/dev/mapper/${dev_mapper_name}" "/dev/mapper/${dev_mapper_name}"_*
     unencrypted_uid="${UDEV_ID_SERIAL_SHORT}-${unencrypted_uuid}"
     name="$(get_map_name "${unencrypted_uid}" "${sys_path}")"
 
-    umount "/media/${name}"
+    umount "/media/${name}" || :
     cryptsetup luksClose "${point}" || :
   fi
 done
 
-sqlite3 -init /data/data/nas_stuff/init.sql /var/readynasd/db.sq3 "
+sqlite3 -init /opt/usb-auto-decrypt/init.sql /var/readynasd/db.sq3 "
   DELETE FROM 'share' WHERE name='${name-}';"
 
-sqlite3 -init /data/data/nas_stuff/init.sql /var/readynasd/db.sq3 "
+sqlite3 -init /opt/usb-auto-decrypt/init.sql /var/readynasd/db.sq3 "
   DELETE FROM 'usb_storage' WHERE name='${name-}';"
 
 ls /dev/mapper || :
 ls /media/* || :
 
-sqlite3 -init /data/data/nas_stuff/init.sql -readonly /var/readynasd/db.sq3 "
+sqlite3 -init /opt/usb-auto-decrypt/init.sql -readonly /var/readynasd/db.sq3 "
   SELECT * FROM 'usb_storage' WHERE name='${name-}';
   SELECT * FROM 'share' WHERE name='${name-}'"
