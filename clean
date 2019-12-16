@@ -1,24 +1,39 @@
 #!/usr/bin/env bash
 
 set -xv
+set -eu
 
-umount /media/USB_HDD_2
+# Load common functions
+source "$(dirname "${BASH_SOURCE[0]}")/common.bsh"
 
-for point in /dev/mapper/USB_HDD_2 /dev/mapper/USB_HDD_2_*; do
+devname="${1}"
+
+load_udev_vars "${1}" UDEV_ DEVPATH ID_SERIAL_SHORT ID_FS_UUID
+sys_path="/sys${UDEV_DEVPATH}"
+uid="${UDEV_ID_SERIAL_SHORT}-${UDEV_ID_FS_UUID}"
+dev_mapper_name="$(get_map_name "${uid}" "${sys_path}")"
+
+for point in "/dev/mapper/${dev_mapper_name}" "/dev/mapper/${dev_mapper_name}"_*; do
   if [ -e "${point}" ]; then
-    cryptsetup luksClose "${point}"
+    load_udev_vars "${point}" UDEV_UNENCRYPTED_ ID_FS_UUID
+    unencrypted_uuid="${UDEV_UNENCRYPTED_ID_FS_UUID}"
+    unencrypted_uid="${UDEV_ID_SERIAL_SHORT}-${unencrypted_uuid}"
+    name="$(get_map_name "${unencrypted_uid}" "${sys_path}")"
+
+    umount "/media/${name}"
+    cryptsetup luksClose "${point}" || :
   fi
 done
 
 sqlite3 -init /data/data/nas_stuff/init.sql /var/readynasd/db.sq3 "
-  DELETE FROM 'share' WHERE name='USB_HDD_2';"
+  DELETE FROM 'share' WHERE name='${name-}';"
 
 sqlite3 -init /data/data/nas_stuff/init.sql /var/readynasd/db.sq3 "
-  DELETE FROM 'usb_storage' WHERE name='USB_HDD_2';"
+  DELETE FROM 'usb_storage' WHERE name='${name-}';"
 
-ls /dev/mapper
-ls /media/USB_HDD_2
+ls /dev/mapper || :
+ls /media/* || :
 
 sqlite3 -init /data/data/nas_stuff/init.sql -readonly /var/readynasd/db.sq3 "
-  SELECT * FROM 'usb_storage' WHERE name='USB_HDD_2';
-  SELECT * FROM 'share' WHERE name='USB_HDD_2'"
+  SELECT * FROM 'usb_storage' WHERE name='${name-}';
+  SELECT * FROM 'share' WHERE name='${name-}'"

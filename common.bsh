@@ -1,6 +1,10 @@
 #!/usr/bin/env false bash
 
-# Is $1 in $2...
+#**
+# .. function:: isin
+#
+# Check if $1 in $2...
+#**
 function isin()
 {
   local key="${1}"
@@ -14,12 +18,85 @@ function isin()
   return 1
 }
 
+#**
+# .. function:: load_udev_vars
+#
+# "Safe eval" set variables from ``udevadm info``. Only supports properties
+#
+# :Arguments: ``$1`` - devive name (e.g. /dev/sda1)
+#             ``$2`` - Prefix to be prepended to variable names
+#             ``$3...`` - Property names to export (e.g. ``ID_SIZE``)
+#**
+function load_udev_vars()
+{
+  local devname="${1}"
+  local prefix="${2}"
+  shift 2
+  local IFS='|'
+  local grep_pattern="^${prefix}(${*})="
+
+  local pattern="(.*)='(.*)'" # regex pattern
+  while IFS='' read -r line || [[ -n "${line}" ]]; do
+    # Regex match
+    [[ ${line} =~ ${pattern} ]]
+    # Use printg to decode string, and sed to strip spaces at the end
+    # I noticed that ReadyNas does this stripping, so can I!
+    declare -g "${BASH_REMATCH[1]}=$(printf ${BASH_REMATCH[2]} | sed 's| *$||')"
+  done < <(udevadm info "${devname}" -q property -x -P ${prefix} | grep -E "${grep_pattern}")
+  # Tested with UDEV_ID_PART_ENTRY_NAME="f o'o B\"ar", so this should be safe
+}
+
+#**
+# .. function:: get_dev_mapper_name
+#
+# This was originally added to solve the problem of /dev/mapper mount points not being cleaned up properly. However this was due to the mounts happening in an inaccessible namespace. Since this was discovered, this auto indexing code is no longer "needed", however I'm leaving it in for robustness sake.
+#
+# :Arguments: ``$1`` - Name to start with (e.g. result of :func:`get_map_name`)
+#**
+function get_dev_mapper_name()
+{
+  local -i count=0
+  local dev_mapper_name="${1}"
+  while [ -e "/dev/mapper/${dev_mapper_name}" ]; do
+    dev_mapper_name="${1}_${count}"
+    count+=1
+  done
+  echo "${dev_mapper_name}"
+}
+
+#**
+# .. function:: mount_type
+#
+# Determines the file system type from a mount point
+#
+# :Arguments: ``$1`` - Mount point
+# :Output: ``stdout`` - Filesystem type
+#
+# .. notes::
+#
+#   May return multiple lines if the mount point is mounted multiple times.
 function mount_type()
 {
   mount | sed -En 's:^.* on '"$1"' (type |\()([^, ]*).*:\2:p'
 }
 
-function get_name()
+#**
+# .. function:: get_map_name
+#
+# Figures out the "map name" of the device. This is uses as the mount point name, and is recorder in ``/etc/frontview/usb/usb_map``
+#
+# First, it checks the ``usb_map`` file, to see if the uid is already enumerated in there. If it is, it uses that value.
+#
+# If it does not exists, it uses the same rules ReadyNAS does to come up with a new name:
+#
+# * USB_{HDD or FLASH}_{number}, only adds an extra U in fron for "unencrypted"
+# * Checks the removable flag on the device to use either FLASH or HDD
+# * Increments the number, until the entry doesn't exist
+#
+# :Arguments: ``$1`` - The uid used, composed of ``{serial number}-{UUID}``
+#             ``$2`` - The /sys/device path to the device
+#**
+function get_map_name()
 {
   local disks
   local removable
@@ -57,10 +134,11 @@ function get_name()
     disks=($(awk -F: '{print $1}' usb_map))
     declare -i count=1
     # search until we find an unused name
-    while isin "USB_${removable}_${count}"; do
+    while isin "UUSB_${removable}_${count}"; do
       count+=1
     done
-    name="USB_${removable}_${count}"
+    name="UUSB_${removable}_${count}"
+    echo "${name}:${uid}" >> /etc/frontview/usb/usb_map
   fi
 
   echo "${name}"
