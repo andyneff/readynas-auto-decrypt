@@ -3,6 +3,8 @@ Add auto decrypt external USB drives on insert, for ReadyNAS
 
 **Note** No matter what I tried, the usb device never showed up on the "System" page under "Devices", it does however show up under "Shares" and in "Backup", and can be unmounted from the "Shares" tab.
 
+Unencrypted devices show up with a `UUSB_` prefix, "unencrypted USB drive"
+
 # Installation
 
 1. Clone this repo in a drive on the nas (or copy it over your own way)
@@ -23,9 +25,18 @@ I gather "search" looks at the mounted USB devices for encryption keys. Since I 
 
 # How does this works
 
-1. Waits for readynasd to add the initial database entry to `usb_storage`. If I don't wait until after this happens, the database is revereted later... "_magic_" and it will not work. We have to let the ReadyNAS fail to mount first, then we can come in and fix it
-2. Find a decryption key, searches `/media/*/data.key`. _Better_ ideas welcome, if this doesn't work for you
-3. Decrypt and mount partition
-4. Update database
+1. Find a decryption key, searches `/media/*/data.key`. _Better_ ideas welcome, if this doesn't work for you
+2. Decrypt and mount partition
+3. Update database
 
 After this, it's pretty much like a normal volume, in the web UI.
+
+# Troubleshooting
+
+In these example, `/dev/sdg1` is the hard drive partition. Yours will be different, and may not even have the 1 at the end, depending on how you formatted your drive.
+
+* How to manually run script: `/opt/usb-auto-decrypt/decrypt_usb /dev/sdg1`. This runs in verbose mode, so plenty of info to find errors with.
+* How to manually run service: `systemctl start usb-decrypt@/dev/sdg1`, for example with `sdg1` being the device name
+  * `systemctl status usb-decrypt@/dev/sdg1` should show the last 5 lines or so of output from the script, to help debug
+* How to test the udev rule: `udevadm test --action=add $(udevadm info /dev/sdg1 -q path)`
+  * Towards the end, you should see `SYSTEMD_WANTS=usb-decrypt@/dev/sdg1.service`. This is good. If you don't, your device/setup may be different from mine and the rule is not picking it up. Try adjusting the rule.
