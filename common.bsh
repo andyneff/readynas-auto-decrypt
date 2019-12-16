@@ -131,10 +131,10 @@ function get_map_name()
     fi
 
     # Parse the list of known names, so we can find a new one
-    disks=($(awk -F: '{print $1}' usb_map))
+    disks=($(awk -F: '{print $1}' /etc/frontview/usb/usb_map))
     declare -i count=1
     # search until we find an unused name
-    while isin "UUSB_${removable}_${count}"; do
+    while isin "UUSB_${removable}_${count}" ${disks[@]+"${disks[@]}"}; do
       count+=1
     done
     name="UUSB_${removable}_${count}"
