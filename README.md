@@ -58,7 +58,7 @@ All bugs have been fixed on my NAS. If you see any, please report and I'll see w
 
 In these example, `/dev/sdg1` is the hard drive partition. Yours will be different, and may not even have the 1 at the end, depending on how you formatted your drive.
 
-* How to manually run script: `/opt/usb-auto-decrypt/decrypt_usb /dev/sdg1`. This runs in verbose mode, so plenty of info to find errors with.
+* How to manually run script: `/opt/usb-auto-decrypt/decrypt_usb /dev/sdg1`. The only intended output is when the database is updated, so that should help tell you when you should see it in the UI. (add `set -xv` to turn on verbose mode for any bash script)
 * How to manually run service: `systemctl start usb-decrypt@/dev/sdg1`, for example with `sdg1` being the device name
   * `systemctl status usb-decrypt@/dev/sdg1` should show the last 5 lines or so of output from the script, to help debug
 * How to test the udev rule: `udevadm test --action=add $(udevadm info /dev/sdg1 -q path)`
