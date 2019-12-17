@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+# For debugging
+
+set -eu
+set -xv
+
+# Load common functions
+source "$(dirname "${BASH_SOURCE[0]}")/common.bsh"
+
+# 1. Set variables up
+
+set_disk_variables "${1}"
+
+dev_mapper_name="$(get_dev_mapper_name "${name}")"
+set_disk_variables_unencrypted "/dev/mapper/${dev_mapper_name}" "${serial}"
+
+fs_type="$(mount_type /"${mount_location}" | head -n 1)"
+fs_type="${fs_type//\'/\'\'}"
+
+update_database_entry

@@ -8,12 +8,119 @@
 : ${STORAGE_CONF=/etc/frontview/usb/storage.conf}
 : ${USB_MAP=/etc/frontview/usb/usb_map}
 
+# Do not set this to 0, when you do not use the ReadyNAS name, when you unmount
+# any other usb device, the encrypted mount is unmounted too! At least when
+# this is set to 1, it is left mounted, just removed from the database, which
+# can be recovered from.
+#
+# In order to me 0 work, I would have to add it to the database AFTER the usb
+# key with the encryption key is unmounted, but then any other Usb unmount would
+# cause the same problem, so it's not worth getting working just for that corner
+# case
 USE_READYNAS_NAME=1
+
 if [ "${USE_READYNAS_NAME}" = "1" ]; then
   : ${MAP_NAME_PREFIX=USB}
 else
   : ${MAP_NAME_PREFIX=UUSB}
 fi
+
+#**
+# .. function:: set_disk_variables
+#
+# :Arguments: ``$1`` - Device name (e.g. ``/dev/sdh1``)
+#**
+function set_disk_variables()
+{
+  load_udev_vars "${1}" UDEV_ DEVPATH ID_PART_ENTRY_NAME ID_SERIAL_SHORT ID_FS_UUID \
+                              ID_MODEL_ENC ID_SIZE ID_LINK_SPEED ID_LOCATION
+
+  devname="${1}"
+  sys_path="/sys${UDEV_DEVPATH}"
+  entry_name="${UDEV_ID_PART_ENTRY_NAME//\'/\'\'}"
+  serial="${UDEV_ID_SERIAL_SHORT//\'/\'\'}"
+  uuid="${UDEV_ID_FS_UUID//\'/\'\'}" # this is the encrypted fs uuid, but that's what ReadyNAS uses
+  description="${UDEV_ID_MODEL_ENC//\'/\'\'}"
+  size="${UDEV_ID_SIZE}"
+  link_speed="${UDEV_ID_LINK_SPEED}"
+  location="${UDEV_ID_LOCATION//\'/\'\'}"
+
+  last_connected_node="$(basename "${devname}")"
+  uid="${serial}-${uuid}"
+  uid="${uid}"
+
+  name="$(get_map_name "${uid}" "${sys_path}")"
+}
+
+# $1 - dev mapper full path
+# $2 - serial number
+function set_disk_variables_unencrypted()
+{
+  if [ "${USE_READYNAS_NAME}" = "0" ]; then
+    # The unencrypted volume has a different UUID. This keeps it separate from
+    # the database entries that ReadyNAS will add when it fails to mount the
+    # encrypted volume
+    load_udev_vars "${1}" UDEV_UNENCRYPTED_ ID_FS_UUID
+
+    # this is the unencrypted fs uuid
+    local unencrypted_uuid="${UDEV_UNENCRYPTED_ID_FS_UUID}"
+    uid="${2}-${unencrypted_uuid}"
+    name="$(get_map_name "${uid}" "${sys_path}")"
+  fi
+
+  mount_location="media/${name}"
+  mount_location="${mount_location//\'/\'\'}"
+}
+
+function update_database_entry()
+{
+  sed -i "/^${uid}!!/d" "${STORAGE_CONF}"
+  echo "${uid}!!${name}!!${description}!!${size}!!1!!${last_connected_node}!!!!${link_speed}!!${location}!!${fs_type}!!" >> "${STORAGE_CONF}"
+
+  sqlite3 -init "${INIT_SQL}" "${DB}" "
+      INSERT OR IGNORE INTO 'usb_storage'
+            ('name', 'device_size', 'is_connected') VALUES
+            ('${name}', 0, 0);
+      UPDATE 'usb_storage'
+      SET uid = '${uid}',
+          description = '${description}',
+          device_size = ${size},
+          is_connected = 1,
+          last_connected_node = '${last_connected_node}',
+          speed = ${link_speed},
+          usbpath = '${location}',
+          mount_point = '${mount_location}',
+          fstype = '${fs_type}',
+          label = '${entry_name}',
+          serial = '${serial}'
+      WHERE name = '${name}';
+
+      INSERT OR IGNORE INTO 'share'
+        ('zfs_name', 'name', 'path', 'user_id', 'group_id') VALUES
+        ('${mount_location}', '${name}', '/${mount_location}', 0, 0);
+      UPDATE 'share'
+      SET type = 'share',
+          volume_id = 'media',
+          comment = '${description}',
+          user_access = 7,
+          group_access = 7,
+          everyone_access = 7,
+          non_owner_delete = 0
+      WHERE name='${name}';
+
+      INSERT OR IGNORE INTO 'zfs_attr'
+        ('share_id', 'auto_defrag') VALUES
+        ((SELECT id FROM 'share' WHERE name='${name}'), 0);
+      UPDATE 'zfs_attr'
+      SET mb_quota = 0,
+          mb_reservation = 0,
+          mb_refquota = 0,
+          mb_refreservation = 0,
+          compression = 0,
+          dedup = 0,
+          bit_rot_protection = 0
+      WHERE share_id = (SELECT id FROM 'share' WHERE name='${name}');"
+}
 
 #**
 # .. function:: isin

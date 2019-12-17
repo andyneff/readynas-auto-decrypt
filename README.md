@@ -1,9 +1,16 @@
+TODO:
+
+- use "rnutil search_for_key data2 /run/systemd/cryptsetup/data2.key 600&" and wait for it to end
+- I still have to do the lcd message :( SHOOT
+- Add script that will encrypt the drive for you.
+- Add a key for each drive, and swap it out.
+- Search the internal drive for a key too?
+- Test unsafe unmount, how does everything adapt?
+- Try the UUSB method again, but replace /dev/sdx1 with /dev/mapper/blah
 
 Add auto decrypt external USB drives on insert, for ReadyNAS
 
-**Note** No matter what I tried, the usb device never showed up on the "System" page under "Devices", it does however show up under "Shares" and in "Backup", and can be unmounted from the "Shares" tab.
-
-Unencrypted devices show up with a `UUSB_` prefix, "unencrypted USB drive"
+Un-encrypted devices show up with a `USB_` prefixed device, just like any other USB device. If you plug in the encrypted device before the decryption key, it will wait 10 minutes for you to plug it in, just like on boot (but I had to make the message myself, so it's limited to one line)
 
 # Installation
 
@@ -12,28 +19,40 @@ Unencrypted devices show up with a `UUSB_` prefix, "unencrypted USB drive"
 1. Run `./install` on the nas, as root. This well install all the files needed
   - Add a udev rule that will call the usb-decrypt service
   - Add the decrypt-usb service template that will call the `decrypt_usb` script
-  - Install the decrypt_usb script in `/opt/usb-auto-decrypt`
+  - Install the decrypt_usb scripts in `/opt/usb-auto-decrypt`
   - Sync all the files with the running daemons, so you are ready to go
 
 Now all you need to do is insert your usb key with the decryption key in one USB slot, then plug in your encrypted drive in the other, and it will mount and decrypt.
 
 # How internal auto decrypt works
 
-Magic, as far as I can tell. There is a file called `/etc/crypttab` that it supposed to describe how to decrypt the (internal) file systems on boot. However the password field says "search", which is not a feature of `/etc/crypttab`, so I am guessing they replaced whatever crypt executable that reads that file with their own custom version, and thus _magic_.
+~~Magic, as far as I can tell. There is a file called `/etc/crypttab` that it supposed to describe how to decrypt the (internal) file systems on boot. However the password field says "search", which is not a feature of `/etc/crypttab`, so I am guessing they replaced whatever crypt executable that reads that file with their own custom version, and thus _magic_.~~
 
-I gather "search" looks at the mounted USB devices for encryption keys. Since I don't know what they used, I just search "/media/*/data.key"
+It appears the `/etc/crypttab` file isn't used by the readynas services. Instead, `/run/systemd/generator/systemd-cryptsetup\@namehere\\x2d0.service` runs on boot
+
+```bash
+/lib/systemd/systemd-cryptsetup attach 'namehere-0' '/dev/md/namehere-0' '/run/systemd/cryptsetup/namehere.key' ''
+/sbin/btrfs device scan '/dev/mapper/namehere-0'
+```
+
+Now, there is another service `/run/systemd/generator/namehere-key.service`, that runs `/usr/bin/rnutil search_for_key 'namehere' '/run/systemd/cryptsetup/namehere.key' 600`. This is the the service that looks for the `namehere.key` file (in the root of the filesystem?) on each usb device.
+
+I would use that same `rnutil` call, however it does not update the LCD screen, so I use my own version of this. For example, if you are trying to mount `USB_HDD_4`, it will look for `USB_HDD_4.key`
 
 # How does this works
 
-1. Find a decryption key, searches `/media/*/data.key`. _Better_ ideas welcome, if this doesn't work for you
+1. Find a decryption key, searches `/media/*/{namehere}.key`.
 2. Decrypt and mount partition
-3. Update database
+3. Continues to run in the background until the drive is unmounted
+  - Update database every time the usb drive is removed. This was only observed to happen any time any usb drive is removed. I think what is happening is readynas is "refreshing" the database every time. From it's point of view, `/dev/sdx1` has no recognized filesystem, and is not mounted, so it updates as that, which is why it gets cleared
+  - It is unclear why when I make my own entry (for example `UUSB_HDD_1`), it is actually unmounted. Again, I assume it is some type of cleanup routine that does not understand my entries.
+  -I have literally tracked EVERY file on disk. The only thing left to explain these discrepancies is the state of running daemons, which I can't fix.
 
-After this, it's pretty much like a normal volume, in the web UI.
+As long as the databases are updated with the entries, it's pretty much like a normal volume, in the web UI.
 
 # Bugs
 
-1. The empty mount dir is left behind in `/media`.
+All bugs have been fixed on my NAS. If you see any, please report and I'll see what I can guess :)
 
 # Troubleshooting
 
