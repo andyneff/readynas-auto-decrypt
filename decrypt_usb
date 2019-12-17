@@ -21,12 +21,32 @@ size="${UDEV_ID_SIZE}"
 link_speed="${UDEV_ID_LINK_SPEED}"
 location="${UDEV_ID_LOCATION}"
 
+last_connected_node="$(basename "${devname}")"
 uid="${serial}-${uuid}"
+
+# 2. Wait for OS to put it's useless entry in
+
+# for (( x=150; x>0; x-- )); do
+#   found=$(sqlite3 -init "${INIT_SQL}" -readonly "${DB}" "
+#           SELECT EXISTS (SELECT 1 FROM 'usb_storage'
+#                          WHERE uid='${uid//\'/\'\'}' LIMIT 1);")
+#   if [ "${found}" = "1" ]; then
+#     break
+#   fi
+#   /usr/bin/rnutil rn_lcd -s "Wait4db $x" -p 1 -e 5 -k 478
+#   sleep 2
+# done
+
+# if [ "${found}" = "0" ]; then
+#   echo "Readynasd didn't create a record for me to use, giving up..." >&2
+#   exit 1
+# fi
+
 
 # 2. Find decryption key
 
 # Search for 10 mintues, just like on boot
-search_until=$(($(date +%s)+600))
+search_until=$(($(date +%s)+${DECRIPTION_KEY_SEARCH_TIME}))
 
 # Search for 10 minutes, or until the device is unplugged
 while [ "${search_until}" -gt "$(date +%s)" ] && [ -e ${sys_path} ]; do
@@ -42,7 +62,7 @@ while [ "${search_until}" -gt "$(date +%s)" ] && [ -e ${sys_path} ]; do
 
   message="     Waiting for decryption key to be inserted. ${timeleft}s left"
   for (( offset=0; offset<50; offset++ )); do
-    /usr/bin/rnutil rn_lcd -s "${message:offset}" -p 1 -e 5 -k 478
+    /usr/bin/rnutil rn_lcd -s "${message:offset}" -p 1 -e 1 -k 478
     sleep 0.2
   done
 done
@@ -55,42 +75,53 @@ done
 if [ -n "${good_key+set}" ]; then
   # cryptsetup close doesn't work if you unplug without unmounting, so we test
   # the the key, and then look for an available name
-  dev_mapper_name="$(get_dev_mapper_name "$(get_map_name "${uid}" "${sys_path}")")"
+  name="$(get_map_name "${uid}" "${sys_path}")"
+  dev_mapper_name="$(get_dev_mapper_name "${name}")"
 
   # Activate luks mount
   cryptsetup luksOpen --key-file "${good_key}" "${devname}" "${dev_mapper_name}"
 
-  # The unencrypted volume has a different UUID. This keeps it separate from
-  # the database entries that ReadyNAS will add when it fails to mount the
-  # encrypted volume
-  load_udev_vars "/dev/mapper/${dev_mapper_name}" UDEV_UNENCRYPTED_ ID_FS_UUID
+  if [ "${USE_READYNAS_NAME}" = "0" ]; then
+    # The unencrypted volume has a different UUID. This keeps it separate from
+    # the database entries that ReadyNAS will add when it fails to mount the
+    # encrypted volume
+    load_udev_vars "/dev/mapper/${name}" UDEV_UNENCRYPTED_ ID_FS_UUID
 
-  # this is the unencrypted fs uuid
-  unencrypted_uuid="${UDEV_UNENCRYPTED_ID_FS_UUID}"
-  unencrypted_uid="${serial}-${unencrypted_uuid}"
+    # this is the unencrypted fs uuid
+    unencrypted_uuid="${UDEV_UNENCRYPTED_ID_FS_UUID}"
+    uid="${serial}-${unencrypted_uuid}"
+    name="$(get_map_name "${uid}" "${sys_path}")"
+  fi
 
-  name="$(get_map_name "${unencrypted_uid}" "${sys_path}")"
   mount_location="media/${name}"
 
   # Mount it
   mkdir -p "/${mount_location}"
   mount /dev/mapper/"${dev_mapper_name}" /"${mount_location}"
 
-# 5. Update database
+# 5. Update database and files
 
   fs_type="$(mount_type /"${mount_location}" | head -n 1)"
 
+  # The 1 is for is_connected, I'm pretty sure
+  if [ ! -f "${STORAGE_CONF}" ]; then
+    touch "${STORAGE_CONF}"
+    chown admin:admin "${STORAGE_CONF}"
+    chmod 600 "${STORAGE_CONF}"
+  fi
+  echo "${uid}!!${name}!!${description}!!${size}!!1!!${last_connected_node}!!!!${link_speed}!!${location}!!${fs_type}!!" >> "${STORAGE_CONF}"
+
   # Add to the database
-  sqlite3 -init /opt/usb-auto-decrypt/init.sql /var/readynasd/db.sq3 "
+  sqlite3 -init "${INIT_SQL}" "${DB}" "
     INSERT OR IGNORE INTO 'usb_storage'
           ('name', 'device_size', 'is_connected') VALUES
           ('${name}', 0, 0);
     UPDATE 'usb_storage'
-    SET uid = '${unencrypted_uid//\'/\'\'}',
+    SET uid = '${uid//\'/\'\'}',
         description = '${description//\'/\'\'}',
         device_size = ${size},
         is_connected = 1,
-        last_connected_node = '$(basename "${devname}")',
+        last_connected_node = '${last_connected_node}',
         speed = ${link_speed},
         usbpath = '${location//\'/\'\'}',
         mount_point = '${mount_location//\'/\'\'}',
@@ -99,17 +130,17 @@ if [ -n "${good_key+set}" ]; then
         serial = '${serial//\'/\'\'}'
     WHERE name = '${name//\'/\'\'}';"
 
-  sqlite3 -init /opt/usb-auto-decrypt/init.sql /var/readynasd/db.sq3 "
+  sqlite3 -init "${INIT_SQL}" "${DB}" "
       INSERT INTO 'share'
         ('zfs_name', 'type', 'volume_id', 'name', 'path', 'comment', 'user_access',
           'group_access', 'everyone_access', 'non_owner_delete', 'user_id', 'group_id') VALUES
         ('${mount_location//\'/\'\'}', 'share', 'media', '${name//\'/\'\'}', '/${mount_location//\'/\'\'}', '${description//\'/\'\'}', 7, 7, 7, 0, 0, 0);"
 
-  share_id="$(sqlite3 /var/readynasd/db.sq3 "
+  share_id="$(sqlite3 "${DB}" "
                 SELECT id FROM share
                 WHERE zfs_name='${mount_location//\'/\'\'}';")"
 
-  sqlite3 -init /opt/usb-auto-decrypt/init.sql /var/readynasd/db.sq3 "
+  sqlite3 -init "${INIT_SQL}" "${DB}" "
       INSERT OR IGNORE INTO 'zfs_attr'
         ('share_id', 'auto_defrag') VALUES
         (${share_id}, 0);
@@ -125,7 +156,7 @@ if [ -n "${good_key+set}" ]; then
 fi
 
 # Debugging
-# sqlite3 -init /opt/usb-auto-decrypt/init.sql -readonly /var/readynasd/db.sq3 '
+# sqlite3 -init "${INIT_SQL}" -readonly "${DB}" '
 #     SELECT * FROM "usb_storage";
 #     SELECT * FROM "share";
 #     SELECT * FROM "zfs_attr";'

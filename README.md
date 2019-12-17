@@ -31,6 +31,10 @@ I gather "search" looks at the mounted USB devices for encryption keys. Since I 
 
 After this, it's pretty much like a normal volume, in the web UI.
 
+# Bugs
+
+1. The empty mount dir is left behind in `/media`.
+
 # Troubleshooting
 
 In these example, `/dev/sdg1` is the hard drive partition. Yours will be different, and may not even have the 1 at the end, depending on how you formatted your drive.

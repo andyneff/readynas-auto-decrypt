@@ -11,19 +11,23 @@ devname="${1}"
 load_udev_vars "${1}" UDEV_ DEVPATH ID_SERIAL_SHORT ID_FS_UUID
 sys_path="/sys${UDEV_DEVPATH}"
 uid="${UDEV_ID_SERIAL_SHORT}-${UDEV_ID_FS_UUID}"
-dev_mapper_name="$(get_map_name "${uid}" "${sys_path}")"
+name="$(get_map_name "${uid}" "${sys_path}")"
 
-for point in "/dev/mapper/${dev_mapper_name}" "/dev/mapper/${dev_mapper_name}"_*; do
+for point in "/dev/mapper/${name}" "/dev/mapper/${name}"_*; do
   if [ -e "${point}" ]; then
-    load_udev_vars "${point}" UDEV_UNENCRYPTED_ ID_FS_UUID
-    unencrypted_uuid="${UDEV_UNENCRYPTED_ID_FS_UUID}"
-    unencrypted_uid="${UDEV_ID_SERIAL_SHORT}-${unencrypted_uuid}"
-    name="$(get_map_name "${unencrypted_uid}" "${sys_path}")"
+    if [ "${USE_READYNAS_NAME}" = "0" ]; then
+      load_udev_vars "${point}" UDEV_UNENCRYPTED_ ID_FS_UUID
+      unencrypted_uuid="${UDEV_UNENCRYPTED_ID_FS_UUID}"
+      uid="${UDEV_ID_SERIAL_SHORT}-${unencrypted_uuid}"
+      name="$(get_map_name "${uid}" "${sys_path}")"
+    fi
 
     umount "/media/${name}" || :
     cryptsetup luksClose "${point}" || :
   fi
 done
+
+sed -i "/^${uid}!!/d" "${STORAGE_CONF}"
 
 sqlite3 -init /opt/usb-auto-decrypt/init.sql /var/readynasd/db.sq3 "
   DELETE FROM 'share' WHERE name='${name-}';"

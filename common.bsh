@@ -1,5 +1,20 @@
 #!/usr/bin/env false bash
 
+# Variables
+: ${DB=/var/readynasd/db.sq3}
+: ${INIT_SQL=/opt/usb-auto-decrypt/init.sql}
+: ${DECRIPTION_KEY_SEARCH_TIME=600} # seconds
+# POTENTIAL_KEYS=(/media/*/data.key)
+: ${STORAGE_CONF=/etc/frontview/usb/storage.conf}
+: ${USB_MAP=/etc/frontview/usb/usb_map}
+
+USE_READYNAS_NAME=1
+if [ "${USE_READYNAS_NAME}" = "1" ]; then
+  : ${MAP_NAME_PREFIX=USB}
+else
+  : ${MAP_NAME_PREFIX=UUSB}
+fi
+
 #**
 # .. function:: isin
 #
@@ -107,7 +122,7 @@ function get_map_name()
   local sys_path="${2}"
 
   # Try and find an entry in the usb_map
-  name="$(sed -n "s|:${uid}$||p" /etc/frontview/usb/usb_map)"
+  name="$(sed -n "s|:${uid}$||p" "${USB_MAP}")"
 
   # If name is not in usb_map, then this device has never been mounted before.
   if [ "${name}" = "" ]; then
@@ -131,14 +146,14 @@ function get_map_name()
     fi
 
     # Parse the list of known names, so we can find a new one
-    disks=($(awk -F: '{print $1}' /etc/frontview/usb/usb_map))
+    disks=($(awk -F: '{print $1}' "${USB_MAP}"))
     declare -i count=1
     # search until we find an unused name
-    while isin "UUSB_${removable}_${count}" ${disks[@]+"${disks[@]}"}; do
+    while isin "${MAP_NAME_PREFIX}_${removable}_${count}" ${disks[@]+"${disks[@]}"}; do
       count+=1
     done
-    name="UUSB_${removable}_${count}"
-    echo "${name}:${uid}" >> /etc/frontview/usb/usb_map
+    name="${MAP_NAME_PREFIX}_${removable}_${count}"
+    echo "${name}:${uid}" >> "${USB_MAP}"
   fi
 
   echo "${name}"
