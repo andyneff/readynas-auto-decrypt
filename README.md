@@ -1,12 +1,8 @@
 TODO:
 
-- use "rnutil search_for_key data2 /run/systemd/cryptsetup/data2.key 600&" and wait for it to end
-- I still have to do the lcd message :( SHOOT
 - Add script that will encrypt the drive for you.
 - Add a key for each drive, and swap it out.
 - Search the internal drive for a key too?
-- Test unsafe unmount, how does everything adapt?
-- Try the UUSB method again, but replace /dev/sdx1 with /dev/mapper/blah
 
 Add auto decrypt external USB drives on insert, for ReadyNAS
 

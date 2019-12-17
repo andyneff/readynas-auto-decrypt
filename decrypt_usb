@@ -62,15 +62,16 @@ if [ -n "${good_key+set}" ]; then
   # cryptsetup close doesn't work if you unplug without unmounting, so we test
   # the the key, and then look for an available name
   dev_mapper_name="$(get_dev_mapper_name "${name}")"
+  dev_mapper_location="/dev/mapper/${dev_mapper_name}"
 
   # Activate luks mount
   cryptsetup luksOpen --key-file "${good_key}" "${devname}" "${dev_mapper_name}"
 
-  set_disk_variables_unencrypted "/dev/mapper/${dev_mapper_name}" "${serial}"
+  set_disk_variables_unencrypted "${dev_mapper_location}" "${serial}"
 
   # Mount it
   mkdir -p "/${mount_location}"
-  mount /dev/mapper/"${dev_mapper_name}" /"${mount_location}"
+  mount "${dev_mapper_location}" /"${mount_location}"
 
 # 5. Update database and files
 
@@ -89,7 +90,7 @@ if [ -n "${good_key+set}" ]; then
   # databases. So I constantly monitor it and remove ie
 
   # While the disk is still mounted...
-  while mount | grep "/dev/mapper/${dev_mapper_name} on /${mount_location}" &> /dev/null; do
+  while mount | grep "${dev_mapper_location} on /${mount_location}" &> /dev/null; do
     if ! grep "${uid}!!${name}!!${description}!!${size}!!1!!${last_connected_node}!!!!${link_speed}!!${location}!!${fs_type}!!" "${STORAGE_CONF}" &> /dev/null; then
       echo "Refreshing the database for ${name}" >&2
       # Add to the database
@@ -102,6 +103,9 @@ if [ -n "${good_key+set}" ]; then
   # A bit of cleanup that doesn't happen for some odd reason *shrugs*
   if [ -d "/${mount_location}" ]; then
     rmdir "/${mount_location}"
+  fi
+  if [ -b "${dev_mapper_location}" ]; then
+    cryptsetup luksClose "${dev_mapper_name}"
   fi
 fi
 
