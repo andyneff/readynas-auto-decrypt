@@ -2,7 +2,6 @@ TODO:
 
 - Add script that will encrypt the drive for you.
 - Add a key for each drive, and swap it out.
-- Search the internal drive for a key too?
 
 Add auto decrypt external USB drives on insert, for ReadyNAS
 

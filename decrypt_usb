@@ -7,29 +7,12 @@ set -eu
 source "$(dirname "${BASH_SOURCE[0]}")/common.bsh"
 
 # 1. Set variables up
+###############################################################################
 
 set_disk_variables "${1}"
 
-# 2. Wait for OS to put it's useless entry in
-
-# for (( x=150; x>0; x-- )); do
-#   found=$(sqlite3 -init "${INIT_SQL}" -readonly "${DB}" "
-#           SELECT EXISTS (SELECT 1 FROM 'usb_storage'
-#                          WHERE uid='${uid}' LIMIT 1);")
-#   if [ "${found}" = "1" ]; then
-#     break
-#   fi
-#   /usr/bin/rnutil rn_lcd -s "Wait4db $x" -p 1 -e 5 -k 478
-#   sleep 2
-# done
-
-# if [ "${found}" = "0" ]; then
-#   echo "Readynasd didn't create a record for me to use, giving up..." >&2
-#   exit 1
-# fi
-
-
 # 2. Find decryption key
+###############################################################################
 
 # Search for 10 mintues, just like on boot
 search_until=$(($(date +%s)+${DECRIPTION_KEY_SEARCH_TIME}))
@@ -37,7 +20,7 @@ search_until=$(($(date +%s)+${DECRIPTION_KEY_SEARCH_TIME}))
 # Search for 10 minutes, or until the device is unplugged
 while [ "${search_until}" -gt "$(date +%s)" ] && [ -e ${sys_path} ]; do
   # Search for keys
-  for key in /media/*/data.key; do
+  for key in /media/*/"${name}.key" /data/*/"${name}.key"; do
     # If the key files exists and check to see if it unlocks the drive
     if [ -e "${key}" ] && cryptsetup luksOpen --test-passphrase --key-file "${key}" "${devname}"; then
       good_key="${key}"
@@ -46,7 +29,7 @@ while [ "${search_until}" -gt "$(date +%s)" ] && [ -e ${sys_path} ]; do
   done
   timeleft=$((${search_until} - $(date +%s)))
 
-  message="     Waiting for decryption key to be inserted. ${timeleft}s left"
+  message="     Waiting for ${name}.key to be inserted. ${timeleft}s left"
   for (( offset=0; offset<50; offset++ )); do
     /usr/bin/rnutil rn_lcd -s "${message:offset}" -p 1 -e 1 -k 478
     sleep 0.2
@@ -56,6 +39,7 @@ done
 /usr/bin/rnutil rn_lcd -s "Key found!" -p 1 -e 5 -k 478
 
 # 3. Auto decrypt and mount
+###############################################################################
 
 # If good key found
 if [ -n "${good_key+set}" ]; then
@@ -73,17 +57,11 @@ if [ -n "${good_key+set}" ]; then
   mkdir -p "/${mount_location}"
   mount "${dev_mapper_location}" /"${mount_location}"
 
-# 5. Update database and files
+# 4. Update database and files
+###############################################################################
 
   fs_type="$(mount_type /"${mount_location}" | head -n 1)"
   fs_type="${fs_type//\'/\'\'}"
-
-  # The 1 is for is_connected, I'm pretty sure
-  if [ ! -f "${STORAGE_CONF}" ]; then
-    touch "${STORAGE_CONF}"
-    chown admin:admin "${STORAGE_CONF}"
-    chmod 600 "${STORAGE_CONF}"
-  fi
 
   # When you unmount ANY usb device, something in readynas will decide "You know
   # what, your encrypted volume isn't REALLY mounted" and remove it from the
@@ -91,6 +69,8 @@ if [ -n "${good_key+set}" ]; then
 
   # While the disk is still mounted...
   while mount | grep "${dev_mapper_location} on /${mount_location}" &> /dev/null; do
+    # Detect if this line has changed, because that indicates that its been
+    # marked as gone, even when it's not
     if ! grep "${uid}!!${name}!!${description}!!${size}!!1!!${last_connected_node}!!!!${link_speed}!!${location}!!${fs_type}!!" "${STORAGE_CONF}" &> /dev/null; then
       echo "Refreshing the database for ${name}" >&2
       # Add to the database
@@ -99,6 +79,9 @@ if [ -n "${good_key+set}" ]; then
     # only check ever x seconds
     sleep 5
   done
+
+  # 5. Cleanup
+  #############################################################################
 
   # A bit of cleanup that doesn't happen for some odd reason *shrugs*
   if [ -d "/${mount_location}" ]; then
@@ -110,7 +93,12 @@ if [ -n "${good_key+set}" ]; then
 fi
 
 # Debugging
-# sqlite3 -init "${INIT_SQL}" -readonly "${DB}" '
-#     SELECT * FROM "usb_storage";
-#     SELECT * FROM "share";
-#     SELECT * FROM "zfs_attr";'
+# watch -n 1 '
+#   sqlite3 -column -header -init /opt/usb-auto-decrypt/init.sql \
+#     -readonly /var/readynasd/db.sq3 "
+#       SELECT id, uid, name, description, device_size, is_connected FROM usb_storage;
+#       SELECT id, last_connected_node, speed, usbpath, mount_point, fstype, label, serial FROM usb_storage;
+#       SELECT id, zfs_name, type, volume_id, name, path, comment, user_id FROM share;
+#       SELECT share_id, mb_refquota FROM zfs_attr;"
+#   cat /etc/frontview/usb/storage.conf
+#   ls -x /dev/sd[g-z]*; ls /dev/mapper /media'
